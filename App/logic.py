@@ -23,116 +23,250 @@ def new_logic():
 # Funciones para la carga de datos
 
 def create_event_catalog(catalog):
+    """
+    Crea nodos agrupando eventos cercanos en tiempo y espacio
+    """
     events = {}
-    for record in catalog["elements"]:
+    processed = set()  # Para trackear eventos ya procesados
+    
+    for i in range(lt.size(catalog)):
+        record = lt.get_element(catalog, i)
+        record_id = record["id"]
+        
+        # Si ya fue procesado, saltar
+        if record_id in processed:
+            continue
+        
+        # Crear nuevo evento/nodo
         event = {
             "lat": record["lat"],
             "lon": record["lon"],
             "timestamp": record["timestamp"],
-            "events":lt.new_list(),
+            "events": lt.new_list(),
             "events_count": 1,
-            "water": [record["comments"], 1]
+            "water_sum": record["comments"],
+            "water_count": 1,
+            "tag-identifiers": [record["tag-local-identifier"]]
         }
         lt.add_last(event["events"], record)
-        for record2 in catalog["elements"]:
-            if record != record2:
+        processed.add(record_id)
+        
+        # Buscar eventos cercanos
+        for j in range(lt.size(catalog)):
+            record2 = lt.get_element(catalog, j)
+            record2_id = record2["id"]
+            
+            if record2_id not in processed:
                 location = ef.haversine(record["lat"], record["lon"], record2["lat"], record2["lon"])
                 time = ef.calc_time_diff(record["timestamp"], record2["timestamp"])
+                
                 if location <= 3 and time <= 3:
-                        lt.add_last(event["events"], record2)
-                        event["events_count"] += 1
-                        event["water"][0] += record2["comments"]
-                        event["water"][1] += 1
-                        i = catalog["elements"].index(record2)
-                        lt.delete_element(catalog, i)
-        event["events"]["elements"] = sorted(event["events"]["elements"], key=lambda d: d["timestamp"])
-        event["id"] = event["events"]["elements"][0]["id"]
-        event["water"] = event["water"][0] / event["water"][1]
+                    lt.add_last(event["events"], record2)
+                    event["events_count"] += 1
+                    event["water_sum"] += record2["comments"]
+                    event["water_count"] += 1
+                    if record2["tag-local-identifier"] not in event["tag-identifiers"]:
+                        event["tag-identifiers"].append(record2["tag-local-identifier"])
+                    processed.add(record2_id)
+        
+        # Ordenar eventos por timestamp
+        events_list = []
+        for k in range(lt.size(event["events"])):
+            events_list.append(lt.get_element(event["events"], k))
+        events_list.sort(key=lambda d: d["timestamp"])
+        
+        # ID del evento es el primer evento (más antiguo)
+        event["id"] = events_list[0]["id"]
+        event["water"] = event["water_sum"] / event["water_count"]
+        event["events_sorted"] = events_list
         events[event["id"]] = event
+    
     return events
 
+
 def load_data(catalog, filename):
+    """
+    Carga los datos y construye los dos grafos
+    """
     start = get_time()
     data_files = csv.DictReader(open(data_dir + filename, encoding='utf-8'))
     list_files = lt.new_list()
+    cranes_set = set()
+    
+    print("Leyendo archivo CSV....")
     for file in data_files:
         file_dict = {
             "tag-local-identifier": file["tag-local-identifier"],
             "lat": float(file["location-lat"]),
             "lon": float(file["location-long"]),
-            "comments": int(file["comments"]), 
+            "comments": float(file["comments"]) / 1000,  # Convertir a km
             "timestamp": file["timestamp"],
             "id": file["event-id"]
-                          }
+        }
         lt.add_last(list_files, file_dict)
-    print("Creando grafos....")
-    points = create_event_catalog(list_files)
-    subjects_distance = {}
-    graph1 = graph.new_graph(10000)
-    graph2 = graph.new_graph(10000)
-    vertex = {}
-    water = {}
-    print("Insertando vértices....")
-    for event in points:
-         graph.insert_vertex(graph1, points[event]["id"], event)
-         graph.insert_vertex(graph2, points[event]["id"], event)
-         for info in points[event]["events"]["elements"]:
-            if info["tag-local-identifier"] not in subjects_distance:
-                info["prom_distancia_agua"] = points[event]["water"]
-                subjects_distance[info["tag-local-identifier"]] = [info]
-            else:
-               info["prom_distancia_agua"] = points[event]["water"]
-               subjects_distance[info["tag-local-identifier"]].append(info)
-
-    for subject in subjects_distance.keys():
-        subjects_distance[subject] = sorted(subjects_distance[subject], key=lambda d: d["timestamp"])
+        cranes_set.add(file["tag-local-identifier"])
     
-    for subject in subjects_distance:
-        for index in range(len(subjects_distance[subject])):
-            if index != 0:
-                a = subjects_distance[subject][index]
-                b = subjects_distance[subject][index-1]
-                location = ef.haversine(a["lat"], a["lon"], b["lat"], b["lon"])
-                time = ef.calc_time_diff(b["timestamp"], a["timestamp"])
-                for point in points:
-                    if b in points[point]["events"]["elements"]:
-                        b["id"] = points[point]["id"]
-                for point in points:
-                    if a in points[point]["events"]["elements"]:
-                        a["id"] = points[point]["id"]
-                if location > 3 and time > 3:
-                    if subject not in vertex:
-                        vertex[subject] = {"node_1": b["id"],
-                                            "node_2": a["id"],
-                                            "distance": location,
-                                            "total":1}
-                    else:
-                        vertex[subject]["distance"] += location
-                        vertex[subject]["total"] += 1
-                    if subject not in water:
-                        water[subject] = {"node_1": b["id"],
-                                            "node_2": a["id"],
-                                            "water": b["prom_distancia_agua"]}
-                    else:
-                        water[subject]["water"] = b["prom_distancia_agua"]
-    print("Añadiendo arcos....")
-    ans = add_edges(water, vertex, graph1, graph2)
+    print(f"Total de eventos cargados: {lt.size(list_files)}")
+    print(f"Total de grullas: {len(cranes_set)}")
+    
+    # Ordenar por timestamp
+    print("Ordenando eventos por timestamp....")
+    events_list = []
+    for i in range(lt.size(list_files)):
+        events_list.append(lt.get_element(list_files, i))
+    events_list.sort(key=lambda x: x["timestamp"])
+    
+    # Recrear lista ordenada
+    list_files_sorted = lt.new_list()
+    for event in events_list:
+        lt.add_last(list_files_sorted, event)
+    
+    print("Creando nodos (puntos migratorios)....")
+    points = create_event_catalog(list_files_sorted)
+    print(f"Total de nodos creados: {len(points)}")
+    
+    # Crear mapeo de evento -> nodo
+    event_to_node = {}
+    for node_id, node_info in points.items():
+        for event in node_info["events_sorted"]:
+            event_to_node[event["id"]] = node_id
+    
+    # Organizar eventos por grulla
+    print("Organizando eventos por grulla....")
+    subjects_distance = {}
+    for node_id, node_info in points.items():
+        for event in node_info["events_sorted"]:
+            crane_id = event["tag-local-identifier"]
+            event_copy = event.copy()
+            event_copy["node_id"] = node_id
+            event_copy["prom_distancia_agua"] = node_info["water"]
+            
+            if crane_id not in subjects_distance:
+                subjects_distance[crane_id] = []
+            subjects_distance[crane_id].append(event_copy)
+    
+    # Asegurar que estén ordenados por timestamp
+    for subject in subjects_distance.keys():
+        subjects_distance[subject].sort(key=lambda d: d["timestamp"])
+    
+    # Crear grafos
+    print("Creando grafos....")
+    graph1 = graph.new_graph(10000)  # Grafo de distancias
+    graph2 = graph.new_graph(10000)  # Grafo hídrico
+    
+    # Insertar vértices
+    print("Insertando vertices....")
+    for node_id, node_info in points.items():
+        graph.insert_vertex(graph1, node_id, node_info)
+        graph.insert_vertex(graph2, node_id, node_info)
+    
+    print(f"Vertices insertados: {graph.order(graph1)}")
+    
+    # Calcular arcos
+    print("Calculando arcos....")
+    edges_distance = {}  # {(node_a, node_b): [distancias]}
+    edges_water = {}     # {(node_a, node_b): [distancias_agua]}
+    
+    for crane_id, events in subjects_distance.items():
+        prev_node = None
+        
+        for event in events:
+            current_node = event["node_id"]
+            
+            # Si cambió de nodo, registrar viaje
+            if prev_node and prev_node != current_node:
+                # Obtener información de los nodos
+                prev_node_info = points[prev_node]
+                curr_node_info = points[current_node]
+                
+                # Calcular distancia geográfica
+                distance = ef.haversine(
+                    prev_node_info["lat"], prev_node_info["lon"],
+                    curr_node_info["lat"], curr_node_info["lon"]
+                )
+                
+                # Registrar para grafo de distancias
+                edge_key = (prev_node, current_node)
+                if edge_key not in edges_distance:
+                    edges_distance[edge_key] = []
+                edges_distance[edge_key].append(distance)
+                
+                # Registrar para grafo hídrico (distancia promedio al agua del destino)
+                if edge_key not in edges_water:
+                    edges_water[edge_key] = []
+                edges_water[edge_key].append(curr_node_info["water"])
+            
+            prev_node = current_node
+    
+    # Agregar arcos a los grafos
+    print("Agregando arcos a grafo de distancias....")
+    for (node_a, node_b), distances in edges_distance.items():
+        avg_distance = sum(distances) / len(distances)
+        if graph.contains_vertex(graph1, node_a) and graph.contains_vertex(graph1, node_b):
+            graph.add_edge(graph1, node_a, node_b, avg_distance)
+    
+    print(f"Arcos en grafo de distancias: {graph.size(graph1)}")
+    
+    print("Agregando arcos a grafo hidrico....")
+    for (node_a, node_b), water_dists in edges_water.items():
+        avg_water = sum(water_dists) / len(water_dists)
+        if graph.contains_vertex(graph2, node_a) and graph.contains_vertex(graph2, node_b):
+            graph.add_edge(graph2, node_a, node_b, avg_water)
+    
+    print(f"Arcos en grafo hidrico: {graph.size(graph2)}")
+    
     end = get_time()
-    print(delta_time(start,end))
-    return ans
+    print(f"\nTiempo total de carga: {round(delta_time(start, end)/1000, 2)} segundos")
+    
+    # Preparar información para retornar
+    nodes_list = list(points.keys())
+    first_5 = []
+    last_5 = []
+    
+    for i in range(min(5, len(nodes_list))):
+        node_id = nodes_list[i]
+        node = points[node_id]
+        first_5.append({
+            "id": node_id,
+            "lat": round(node["lat"], 6),
+            "lon": round(node["lon"], 6),
+            "timestamp": node["timestamp"],
+            "grullas": ", ".join(node["tag-identifiers"]),
+            "eventos": node["events_count"]
+        })
+    
+    for i in range(max(0, len(nodes_list) - 5), len(nodes_list)):
+        node_id = nodes_list[i]
+        node = points[node_id]
+        last_5.append({
+            "id": node_id,
+            "lat": round(node["lat"], 6),
+            "lon": round(node["lon"], 6),
+            "timestamp": node["timestamp"],
+            "grullas": ", ".join(node["tag-identifiers"]),
+            "eventos": node["events_count"]
+        })
+    
+    catalog_result = {
+        "graph_distance": graph1,
+        "graph_water": graph2,
+        "nodes": points,
+        "cranes": cranes_set,
+        "event_to_node": event_to_node,
+        "total_events": lt.size(list_files)
+    }
+    
+    return {
+        "catalog": catalog_result,
+        "total_cranes": len(cranes_set),
+        "total_events": lt.size(list_files),
+        "total_nodes": len(points),
+        "total_edges_distance": graph.size(graph1),
+        "total_edges_water": graph.size(graph2),
+        "first_5_nodes": first_5,
+        "last_5_nodes": last_5
+    }
 
-def add_edges (water,vertex, graph1, graph2):
-    for source in water:
-        if graph.contains_vertex(graph2, water[source]["node_2"]) and graph.contains_vertex(graph2, water[source]["node_1"]):
-            graph.add_edge(graph2, 9120283499, 9120283540, 5020.428571428572)
-            print("nuevo_arco")
-            print(water[source]["node_2"], water[source]["node_1"], water[source]["water"])
-            graph.add_edge(graph2, water[source]["node_2"], water[source]["node_1"], water[source]["water"])
-    for trip in vertex:
-        if graph.contains_vertex(graph1, vertex[trip]["node_1"]) and graph.contains_vertex(graph1, vertex[trip]["node_2"]):
-            print(vertex[trip]["node_1"], vertex[trip]["node_2"], vertex[trip]["distance"]/vertex[trip]["total"])
-            graph.add_edge(graph1, vertex[trip]["node_1"], vertex[trip]["node_2"], vertex[trip]["distance"]/vertex[trip]["total"])
-    return graph1, graph2
 
 
 
