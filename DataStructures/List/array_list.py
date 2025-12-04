@@ -232,3 +232,46 @@ def quick_sort(my_list, cmp_function):
     for i in range(right["size"]):
         add_last(result, get_element(right, i))
     return result
+
+def merge_sort_dict_list(my_list, criteria):    
+    if my_list["size"] > 1:
+        mid = my_list["size"] // 2
+        left_half = {"size": mid, "elements": my_list["elements"][:mid]}
+        right_half = {"size": my_list["size"] - mid, "elements": my_list["elements"][mid:]}
+
+        merge_sort_dict_list(left_half, criteria)
+        merge_sort_dict_list(right_half, criteria)
+        secondary_key=criteria.get("secondary_key")
+        sort_key=criteria["type"]
+        i = 0
+        j = 0
+        k = 0
+        while i < left_half["size"] and j < right_half["size"]:
+            if left_half["elements"][i][sort_key] > right_half["elements"][j][sort_key]:
+                my_list["elements"][k] = left_half["elements"][i]
+                i += 1
+            elif left_half["elements"][i][sort_key] < right_half["elements"][j][sort_key]:
+                my_list["elements"][k] = right_half["elements"][j]
+                j += 1
+            else:
+                if secondary_key==None:
+                    my_list["elements"][k] = right_half["elements"][j]
+                    j += 1
+                else:
+                    if left_half["elements"][i][secondary_key] > right_half["elements"][j][secondary_key]:
+                        my_list["elements"][k] = left_half["elements"][i]
+                        i += 1
+                    else:
+                        my_list["elements"][k] = right_half["elements"][j]
+                        j += 1
+            k += 1
+
+        while i < left_half["size"]:
+            my_list["elements"][k] = left_half["elements"][i]
+            i += 1
+            k += 1
+
+        while j < right_half["size"]:
+            my_list["elements"][k] = right_half["elements"][j]
+            j += 1
+            k += 1

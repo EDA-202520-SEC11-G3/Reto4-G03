@@ -22,148 +22,55 @@ def new_logic():
 
 # Funciones para la carga de datos
 
+def create_event_catalog(catalog):
+    events = {}
+    for record in catalog["elements"]:
+        event = {
+            "lat": record["lat"],
+            "lon": record["lon"],
+            "timestamp": record["timestamp"],
+            "events":lt.new_list(),
+            "events_count": 1,
+            "water": [record["comments"], 1]
+        }
+        lt.add_last(event["events"], record) 
+        for record2 in catalog["elements"]:
+            if record != record2:
+                location = ef.haversine(record["lat"], record["lon"], record2["lat"], record2["lon"])
+                time = ef.calc_time_diff(record["timestamp"], record2["timestamp"])
+                if location <= 3 and time <= 3:
+                        lt.add_last(event["events"], record2)
+                        event["events_count"] += 1
+                        event["water"][0] += record2["comments"]
+                        event["water"][1] += 1
+                        i = catalog["elements"].index(record2)
+                        lt.delete_element(catalog["elements"], i)
+        event["events"] = lt.selection_sort(event["events"], ef.cmp_timestamps)
+        event["id"] = event["events"]["elements"][0]["id"]
+        event["water"] = event["water"][0] / event["water"][1]
+        events[event["id"]] = event
+    return events
 def load_data(catalog, filename):
-    """
-    Carga los datos del reto
-    """
-    fileSearch = data_dir + filename
-    data_files = csv.DictReader(open(fileSearch, encoding='utf-8'))
-    
-    #Primero se lee el archivo csv para procesarlo como diccionarios,
-    #luego se guardan en un array a modo de tupla (timestamp, record)
-    #siendo record la información de cada diccionario 
-    events = lt.new_list()
-    for record in data_files:
-        ts_str = record["timestamp"]
-        ts = ts_str
-        lt.add_last(events, (ts, row))
-    # Las comparaciones alfabeticas funcionan para timestamps en formato dado
-    # por tanto se puede ordenar directamente en base al string timestamp
-    events["elements"].sort(key=lambda x: x[0])
-    # Construir Vértices a partir de los Puntos Migratorios
-    nodos_info = {}  # event_id -> dict de información del nodo
-    event_to_node = {}  # event_id -> nodo_id, id para el nodo que se creo 
-    
-    for ts, record_data in events["elements"]:
-        event_id = record_data["event-id"]
-        lat, lon = float(record_data["location-lat"]), float(record_data["location-long"])
-        tag = record_data["tag-local-identifier"]
-        dist_agua = float(record_data["comments"]) / 1000 
-        assigned = False
-        # Buscar nodo existente
-        for nid, ndata in nodos_info.items():
-            d_dist = ef.haversine(lat, lon, ndata["lat"], ndata["lon"])
-            # Diferencia temporal en horas (aprox por string)
-            d_time = abs(int((ndata["creation_ts"] - ts).split()[0]) * 24 + 
-                        int((ndata["creation_ts"].split()[1][:2] - ts.split()[1][:2])))
-            
-            if d_dist < 3 and d_time < 3:
-                # Actualizar nodo EXISTENTE
-                if tag not in ndata['tags']:
-                    ndata['tags'].append(tag)
-                ndata['events'].append(event_id)
-                ndata['events_count'] += 1
-                prev_count = ndata['events_count'] - 1
-                ndata['prom_agua'] = (ndata['prom_agua'] * prev_count + dist_agua) / ndata['events_count']
-                event_to_node[event_id] = nid
-                assigned = True
-                break
-        
-        if not assigned:
-            # Nuevo nodo - POSICIÓN y TIEMPO FIJOS
-            nodos_info[event_id] = {
-                'lat': lat, 'lon': lon, 'creation_ts': ts,
-                'tags': [tag], 'events': [event_id],
-                'events_count': 1, 'prom_agua': dist_agua
-            }
-            event_to_node[event_id] = event_id
-    
-    # Insertar TODOS los nodos en AMBOS grafos
-    grafo1, grafo2 = catalog  # Desplazamientos, Hídrica
-    
-    for node_id in nodos_info:
-        graph.insert_vertex(grafo1, node_id, nodos_info[node_id])
-        graph.insert_vertex(grafo2, node_id, nodos_info[node_id])
-    
-    # 2. Arcos GRAFO1 (desplazamientos promedio)
-    viajes_dist = {}  # (src,dst) -> lista distancias
-    tags_grullas = {}
-    
-    # Agrupar eventos por grulla
-    for ts, row in events:
-        event_id = row['event-id']
-        tag = row['tag-local-identifier']
-        if tag not in tags_grullas:
-            tags_grullas[tag] = []
-        tags_grullas[tag].append(event_id)
-    
-    for tag, event_list in tags_grullas.items():
-        prev_node = None
-        for event_id in event_list:
-            curr_node = event_to_node[event_id]
-            if prev_node and curr_node != prev_node:
-                src_lat, src_lon = nodos_info[prev_node]['lat'], nodos_info[prev_node]['lon']
-                dst_lat, dst_lon = nodos_info[curr_node]['lat'], nodos_info[curr_node]['lon']
-                d = ef.haversine(src_lat, src_lon, dst_lat, dst_lon)
-                
-                key = (prev_node, curr_node)
-                if key not in viajes_dist:
-                    viajes_dist[key] = []
-                viajes_dist[key].append(d)
-            prev_node = curr_node
-    
-    # Agregar arcos grafo1
-    for (src, dst), dists in viajes_dist.items():
-        peso = sum(dists) / len(dists)
-        graph.add_edge(grafo1, src, dst, peso)
-    
-    # 3. Arcos GRAFO2 (distancia agua destino promedio)
-    viajes_hid = {}  # (src,dst) -> lista prom_agua_destino
-    for tag, event_list in tags_grullas.items():
-        prev_node = None
-        for event_id in event_list:
-            curr_node = event_to_node[event_id]
-            if prev_node and curr_node != prev_node:
-                peso_hid = nodos_info[curr_node]['prom_agua']
-                
-                key = (prev_node, curr_node)
-                if key not in viajes_hid:
-                    viajes_hid[key] = []
-                viajes_hid[key].append(peso_hid)
-            prev_node = curr_node
-    
-    # Agregar arcos grafo2
-    for (src, dst), pesos in viajes_hid.items():
-        peso = sum(pesos) / len(pesos)
-        graph.add_edge(grafo2, src, dst, peso)
-    
-    # 4. Reporte Estadísticas
-    grullas = len(tags_grullas)
-    eventos_total = len(events)
-    nodos_total = len(nodos_info)
-    arcos1 = graph.size(grafo1)
-    arcos2 = graph.size(grafo2)
-    
-    print(f"Grullas reconocidas: {grullas}")
-    print(f"Eventos cargados: {eventos_total}")
-    print(f"Nodos construidos: {nodos_total}")
-    print(f"Arcos Grafo1 (desplazamientos): {arcos1}")
-    print(f"Arcos Grafo2 (hídrica): {arcos2}")
-    
-    # Primeros y últimos 5 nodos por creation_ts
-    nodos_ordenados = sorted(nodos_info.items(), key=lambda x: x[1]['creation_ts'])
-    
-    print("\n=== PRIMEROS 5 NODOS ===")
-    for i, (nid, data) in enumerate(nodos_ordenados[:5]):
-        print(f"Nodo {i+1}: ID={nid}, Pos=({data['lat']:.5f},{data['lon']:.5f}), "
-              f"Fecha={data['creation_ts']}, Tags={data['tags']}, Events={data['events_count']}")
-    
-    print("\n=== ÚLTIMOS 5 NODOS ===")
-    for i, (nid, data) in enumerate(nodos_ordenados[-5:]):
-        print(f"Nodo {len(nodos_ordenados)-5+i+1}: ID={nid}, Pos=({data['lat']:.5f},{data['lon']:.5f}), "
-              f"Fecha={data['creation_ts']}, Tags={data['tags']}, Events={data['events_count']}")
-    
-    return (grafo1, grafo2)
+    data_files = csv.DictReader(open(data_dir + filename, encoding='utf-8'))
+    list_files = lt.new_list()
+    for file in data_files:
+        file_dict = {
+            "tag-local-identifier": file["tag-local-identifier"],
+            "lat": float(file["location-lat"]),
+            "lon": float(file["location-long"]),
+            "comments": int(file["comments"]), 
+            "timestamp": file["timestamp"],
+            "id": file["event-id"]
+                          }
+        lt.add_last(list_files, file_dict)
+    for record in list_files["elements"]:
+        for record2 in list_files["elements"]:
+            if record != record2:
+                distance = ef.haversine(record["lat"], record["lon"], record2["lat"], record2["lon"])
+
+
+
+
 
 # Funciones de consulta sobre el catálogo
 
