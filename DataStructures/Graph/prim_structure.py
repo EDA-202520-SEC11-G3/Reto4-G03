@@ -28,3 +28,46 @@ def new_prim_structure(source, g_order):
     }
 
     return structure
+
+def prim_mst(graph, start_vertex):
+    """
+    Implementación mínima de Prim para grafo dirigido con pesos.
+    Recebe grafo y vértice inicial.
+    Retorna lista de aristas MST y conjunto de vértices incluidos.
+    """
+
+    import heapq
+
+    mst_edges = []
+    mst_vertices = set()
+    edge_queue = []
+
+    mst_vertices.add(start_vertex)
+
+    # Usar mapa de vertices para obtener adyacencias y pesos
+    def get_neighbors_with_weights(u):
+        vertex = mp.get(graph['vertices'], u)
+        if vertex is None:
+            return []
+        adj_map = vtx.get_adjacents(vertex)
+        if adj_map is None:
+            return []
+        keys = mp.key_set(adj_map)
+        neighbor_weights = [(v, mp.get(adj_map, v)) for v in keys]
+        return neighbor_weights
+
+    # Push edges origen a queue
+    for neighbor, weight in get_neighbors_with_weights(start_vertex):
+        heapq.heappush(edge_queue, (weight, start_vertex, neighbor))
+
+    while edge_queue and len(mst_vertices) < dg.order(graph):
+        weight, u, v = heapq.heappop(edge_queue)
+        if v not in mst_vertices:
+            mst_vertices.add(v)
+            mst_edges.append((u, v, weight))
+            # Agregar nuevos bordes desde v
+            for n, w in get_neighbors_with_weights(v):
+                if n not in mst_vertices:
+                    heapq.heappush(edge_queue, (w, v, n))
+
+    return mst_edges, mst_vertices
