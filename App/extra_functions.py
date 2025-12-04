@@ -5,6 +5,7 @@ from DataStructures.Map import map_linear_probing as mp
 from DataStructures.List import array_list as alt
 from DataStructures.Graph import digraph as dg
 from DataStructures.Stack import stack as st
+from DataStructures.Graph import bfo as bfs
 from math import radians, sin, cos, sqrt, atan2, asin
 
 data_dir = os.path.dirname(os.path.realpath(__file__))
@@ -174,7 +175,7 @@ def dijkstra(my_graph, source):
 
 def bfs_component(graph, start_vertex, visited, component_id):
     component_vertices = alt.new_list()
-    bfs_result = bfs(graph, start_vertex)
+    bfs_result = bfs.bfs(graph, start_vertex)
     all_vertices = mp.key_set(graph['vertices'])
     for i in range(alt.size(all_vertices)):
         v = alt.get_element(all_vertices, i)

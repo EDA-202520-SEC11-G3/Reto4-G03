@@ -8,6 +8,9 @@ from DataStructures.List import array_list as lt
 from DataStructures.List import single_linked_list as slt
 from DataStructures.Queue import queue as q
 from DataStructures.Stack import stack as st
+from DataStructures.Graph import dijsktra as dij
+from DataStructures.Graph import bfo as bfs
+from DataStructures.Graph import dfs as dfs 
 from math import radians, sin, cos, sqrt, atan2, asin
 from . import extra_functions as ef 
 
@@ -143,7 +146,7 @@ def req_1(catalog, initial_point, final_point, crane_id, graph_distance):
     if not ef.crane_in_point(origin_point, crane_id):
         return {"mensaje": f"Grulla {crane_id} no encontrada en origen", "primer_nodo": origin_point["id"], "grulla": crane_id}
     
-    search_result = ef.dfs(graph_distance, origin_point["id"])
+    search_result = dfs.dfs(graph_distance, origin_point["id"])
     if not ef.has_path_to(dest_point["id"], search_result):
         return {"mensaje": "No existe camino viable", "primer_nodo": origin_point["id"], "origen": origin_point["id"], "destino": dest_point["id"]}
     
@@ -180,7 +183,7 @@ def req_2(catalog, initial_point, final_point, radius_km, graph_distance):
     dest_point = ef.find_nearest_migration_point(catalog, final_point[0], final_point[1])
     if origin_point is None or dest_point is None:
         return {"mensaje": "No se encontraron puntos migratorios cercanos"}
-    visited_map = ef.bfs(graph_distance, origin_point["id"])
+    visited_map = bfs.bfs(graph_distance, origin_point["id"])
     if not ef.has_path_to(visited_map, dest_point["id"]):
         return {"mensaje": "No existe camino viable entre puntos", "origen": origin_point["id"], "destino": dest_point["id"]}
     path_stack = ef.path_to(visited_map, dest_point["id"])
@@ -267,7 +270,7 @@ def req_5(catalog, initial_point, final_point, graph_type, graph1, graph2):
     if origin_point is None or dest_point is None:
         return {"mensaje": "No se encontraron puntos migratorios cercanos"}
     
-    dijkstra_result = ef.dijkstra(selected_graph, origin_point["id"])
+    dijkstra_result = dij.dijkstra(selected_graph, origin_point["id"])
     
     if not ef.has_path_to(dest_point["id"], dijkstra_result):
         return {"mensaje": "No existe camino viable", "origen": origin_point["id"], "destino": dest_point["id"], "tipo_grafo": graph_type}
