@@ -99,7 +99,7 @@ def main():
         if int(inputs) == 0:
              if not loaded:
                 loaded = True
-                filename = input("Selecciona el tamaño de los datos:\n A.Pequeño\n B. 30pct \n C.80pct \n D. Grande\n")
+                filename = input("Selecciona el tamaño de los datos:\n A. Pequeño\n B. 30pct \n C. 80pct \n D. Grande\n")
                 if filename.lower() == "a":
                     filename = "\\Data\\1000_cranes_mongolia_small.csv"
                 if filename.lower() == "b":
@@ -119,7 +119,7 @@ def main():
                     print("Perfecto, continúa haciendo uso de la aplicación")
                 if confirmation.lower() == "y" or confirmation.lower() == "si" or confirmation.lower() == "yes" or confirmation.lower() == "oui":
                     control = new_logic()
-                    filename = input("Selecciona el tamaño de los datos:\n A.Pequeño\n B. 30pct \n C.80pct \n D. Grande\n")
+                    filename = input("Selecciona el tamaño de los datos:\n A. Pequeño\n B. 30pct \n C. 80pct \n D. Grande\n")
                     if filename.lower() == "a":
                         filename = "\\Data\\1000_cranes_mongolia_small.csv"
                     if filename.lower() == "b":

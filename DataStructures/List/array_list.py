@@ -174,6 +174,19 @@ def selection_sort(my_list, sort_crit):
                 menor = my_list["elements"][j]
         my_list["elements"][ind] = vale_o_novale
         my_list["elements"][i] = menor
+        
+def selection_sort_list(my_list, sort_crit):
+    for i in range(my_list["size"]):
+        for j in range(my_list["size"]):
+            menor = max(my_list["elements"])
+            vale_o_novale = 0
+            ind = 0
+            if default_sort_criteria(my_list["elements"][j],menor):
+                my_list["elements"].index(menor)
+                vale_o_novale = menor 
+                menor = my_list["elements"][j]
+        my_list["elements"][ind] = vale_o_novale
+        my_list["elements"][i] = menor
 
 def shell_sort(my_list, sort_crit):
     n = len(my_list)
